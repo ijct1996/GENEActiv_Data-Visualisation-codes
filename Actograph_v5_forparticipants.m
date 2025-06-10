@@ -5,400 +5,464 @@
 %   Processes raw actigraphy `.xlsx` data to generate:
 %     • Weekly participant activity profiles
 %     • Weekly activity heatmaps
-%     • Weekly daily activity and light-exposure bar charts
-%     • Weekly low-activity call-outs
-%     • A full-period light daily distribution area plot
-%     • An Excel summary (“call-out sheet”) of key daily metrics + rhythm metrics,
-%       including L5/M10 calculated on activity, plus a definitions sheet
+%     • Weekly daily activity and light‐exposure bar charts
+%     • Weekly low‐activity call‐outs
+%     • A full‐period light daily distribution area plot
+%     • An Excel workbook with two sheets:
+%         – Summary of key daily metrics and rhythm metrics, including L5/M10 on activity
+%         – Definitions of all terms with interpretation guidance
 %
 % HOW TO RUN:
 %   1. Run this script in MATLAB.
 %   2. When prompted:
-%        – Select the input Excel file containing actigraphy data.
-%        – Select (or create) the output folder for saving results.
-%   3. The script will process the data and save figures + an `.xlsx` summary.
+%        – Select the input Excel file containing the actigraphy data.
+%        – Choose whether to plot only complete 24‐hour days or all days.
+%        – Select or create the output folder for saving JPEG images.
+%   3. The script will process the data and save figures and an Excel workbook.
 %
 % NOTE:
-%   – Input Excel must have columns:
-%       “Time stamp”       (format: yyyy-MM-dd HH:mm:ss:SSS)
-%       “Sum of vector (SVMg)”  (activity)
-%       “Light level (LUX)”      (light intensity)
-%       “Button (1/0)”           (event markers)
+%   Input Excel must have columns:
+%     “Time stamp”       (format: yyyy‐MM‐dd HH:mm:ss:SSS)
+%     “Sum of vector (SVMg)”  (activity)
+%     “Light level (LUX)”      (light intensity)
+%     “Button (1/0)”           (event markers)
 % ------------------------------------------------------------------------
 
 clc; clearvars; close all;
 
 %% 1) Select and load the Excel file
-[fileName, filePath] = uigetfile('*.xlsx','Select Excel file');
-if isequal(fileName,0)
+[fileName, filePath] = uigetfile('*.xlsx', 'Select the input Excel file');
+if isequal(fileName, 0)
     error('File selection cancelled.');
 end
-fullFileName = fullfile(filePath,fileName);
-dataTable    = readtable(fullFileName,'VariableNamingRule','preserve');
+fullFileName = fullfile(filePath, fileName);
+dataTable    = readtable(fullFileName, 'VariableNamingRule', 'preserve');
 
 % Extract relevant columns
-aActivity  = dataTable.("Sum of vector (SVMg)");   % raw activity
-lLight     = dataTable.("Light level (LUX)");      % light intensity
-bButton    = dataTable.("Button (1/0)");           % event markers
-timestamps = datetime(dataTable.("Time stamp"),...
-                 'InputFormat','yyyy-MM-dd HH:mm:ss:SSS');
+activityCounts  = dataTable.("Sum of vector (SVMg)");   % raw activity data
+lightLevels     = dataTable.("Light level (LUX)");      % light intensity
+buttonEvents    = dataTable.("Button (1/0)");           % event markers
+timestamps      = datetime(dataTable.("Time stamp"), ...
+                  'InputFormat', 'yyyy-MM-dd HH:mm:ss:SSS');
 
-%% 2) Bin into days × minutes
-startTime         = dateshift(timestamps(1),'start','day');
-minutesSinceStart = minutes(timestamps - startTime);
-numDays           = ceil(days(timestamps(end) - startTime));
-binEdges          = 0 : 1440 * numDays;
-binIdx            = discretize(minutesSinceStart, binEdges);
+%% 2) Bin data into days by minutes
+firstDayStart       = dateshift(timestamps(1), 'start', 'day');
+elapsedMinutes      = minutes(timestamps - firstDayStart);
+totalDays           = ceil(days(timestamps(end) - firstDayStart));
+binEdges            = 0 : 1440 * totalDays;
+minuteBinIndices    = discretize(elapsedMinutes, binEdges);
 
-% Build a datetime array for each “day 1, day 2, …”
-dayDates = startTime + days(0:(numDays-1))';
-weekDays = cellstr(datestr(dayDates,'dddd'));
+% Build arrays of dates
+dayStartDates = firstDayStart + days(0:(totalDays-1))';
+weekDayNames  = cellstr(datestr(dayStartDates, 'dddd'));
 
-% Preallocate binned data
-binnedActivity = nan(numDays,1440);
-binnedLight    = nan(numDays,1440);
-binnedButton   = nan(numDays,1440);
+% Preallocate binned matrices
+binnedActivity = nan(totalDays, 1440);
+binnedLight    = nan(totalDays, 1440);
+binnedButton   = nan(totalDays, 1440);
 
-% Populate bins
-for d = 1:numDays
-    sel    = binIdx > (d-1)*1440 & binIdx <= d*1440;
-    relMin = binIdx(sel) - (d-1)*1440;
-    binnedActivity(d,relMin) = aActivity(sel);
-    binnedLight(d,relMin)    = lLight(sel);
-    binnedButton(d,relMin)   = bButton(sel);
+% Populate binned matrices
+for dayIndex = 1:totalDays
+    selector     = minuteBinIndices > (dayIndex-1)*1440 & minuteBinIndices <= dayIndex*1440;
+    relativeMins  = minuteBinIndices(selector) - (dayIndex-1)*1440;
+    binnedActivity(dayIndex, relativeMins) = activityCounts(selector);
+    binnedLight(dayIndex, relativeMins)    = lightLevels(selector);
+    binnedButton(dayIndex, relativeMins)   = buttonEvents(selector);
 end
 
-%% 3) Select output folder
-outputFolder = uigetdir('','Select output folder for JPEGs');
+%% 3) Prompt user for data range choice
+choice = questdlg( ...
+    'Plot only complete 24‐hour days, or all available days?', ...
+    'Select Data Range', ...
+    'Complete days','All days','All days' ...
+    );
+if strcmp(choice, 'Complete days')
+    isCompleteDay = all(~isnan(binnedActivity), 2);
+    dayStartDates = dayStartDates(isCompleteDay);
+    weekDayNames  = weekDayNames(isCompleteDay);
+    binnedActivity = binnedActivity(isCompleteDay, :);
+    binnedLight    = binnedLight(isCompleteDay, :);
+    binnedButton   = binnedButton(isCompleteDay, :);
+    totalDays      = sum(isCompleteDay);
+else
+    dayStartDates = dayStartDates;
+    weekDayNames  = weekDayNames;
+    % totalDays remains unchanged
+end
+
+%% 4) Select output folder for JPEG images
+outputFolder = uigetdir('', 'Select output folder for JPEG images');
 if outputFolder == 0
-    error('No folder selected.');
+    error('No folder selected for output.');
 end
-timeAxis = linspace(0,1440,1440);   % minutes for x-axis
+timeAxisMinutes = linspace(0, 1440, 1440);  % horizontal axis in minutes
 
-%% 4) Weekly figures & low-activity call-outs
-nWeeks = ceil(numDays/7);
+%% 5) Generate weekly figures and call‐outs
+numberOfWeeks = ceil(totalDays / 7);
 
-for wk = 1:nWeeks
-    daysIdx   = (wk-1)*7 + (1:7);
-    daysIdx   = daysIdx(daysIdx <= numDays);
-    nThisWeek = numel(daysIdx);
+for weekIndex = 1:numberOfWeeks
+    dayIndices     = (weekIndex-1)*7 + (1:7);
+    dayIndices     = dayIndices(dayIndices <= totalDays);
+    daysThisWeek   = numel(dayIndices);
     
-    % Prepare dd/mm labels (lowercase 'mm' = month)
-    dateStrings = cellstr(datestr(dayDates(daysIdx),'dd/mm'));
+    % Prepare dd/mm labels for this week
+    dateLabels = cellstr(datestr(dayStartDates(dayIndices), 'dd/mm'));
 
-    %% 4a) Participant Activity Profile (Day #)
-    fig = figure('Color','w','Name',sprintf('Participant Activity Profile – Week %d',wk),...
-                 'NumberTitle','off','Position',[100 100 1200 900],'Toolbar','none');
-    for i = 1:nThisWeek
-        d = daysIdx(i);
-        ax = subplot(nThisWeek,1,i); hold(ax,'on');
-        maskDark  = binnedLight(d,:) <= 1;
-        maskLight = binnedLight(d,:) > 1;
-        yTop = max(binnedActivity(d,:),[],'omitnan') * 1.2;
-        if any(maskDark)
-            xD = [timeAxis(maskDark), fliplr(timeAxis(maskDark))];
-            yD = [zeros(1,sum(maskDark)), yTop*ones(1,sum(maskDark))];
-            fill(ax, xD, yD, [0.9 0.9 0.9], 'EdgeColor','none','FaceAlpha',0.3);
+    %% 5a) Participant Activity Profile (Day number)
+    fig = figure('Color', 'w', ...
+                 'Name', sprintf('Participant Activity Profile – Week %d', weekIndex), ...
+                 'NumberTitle', 'off', 'Position', [100 100 1200 900], ...
+                 'Toolbar', 'none');
+    for i = 1:daysThisWeek
+        dayIdx = dayIndices(i);
+        ax = subplot(daysThisWeek, 1, i); hold(ax, 'on');
+        darkMask  = binnedLight(dayIdx, :) <= 1;
+        lightMask = binnedLight(dayIdx, :) > 1;
+        yMax      = max(binnedActivity(dayIdx, :), [], 'omitnan') * 1.2;
+        if any(darkMask)
+            xDark = [timeAxisMinutes(darkMask), fliplr(timeAxisMinutes(darkMask))];
+            yDark = [zeros(1, sum(darkMask)), yMax * ones(1, sum(darkMask))];
+            fill(ax, xDark, yDark, [0.9 0.9 0.9], 'EdgeColor', 'none', 'FaceAlpha', 0.3);
         end
-        if any(maskLight)
-            xL = [timeAxis(maskLight), fliplr(timeAxis(maskLight))];
-            yL = [zeros(1,sum(maskLight)), yTop*ones(1,sum(maskLight))];
-            fill(ax, xL, yL, [0.9290 0.6940 0.1250], 'EdgeColor','none','FaceAlpha',0.3);
+        if any(lightMask)
+            xLight = [timeAxisMinutes(lightMask), fliplr(timeAxisMinutes(lightMask))];
+            yLight = [zeros(1, sum(lightMask)), yMax * ones(1, sum(lightMask))];
+            fill(ax, xLight, yLight, [0.9290 0.6940 0.1250], 'EdgeColor', 'none', 'FaceAlpha', 0.3);
         end
-        bar(ax, timeAxis, binnedActivity(d,:), 'FaceColor',[0 0.4470 0.7410],'EdgeColor','none');
-        ylim(ax, [0 yTop]); xlim(ax, [0 1440]);
+        bar(ax, timeAxisMinutes, binnedActivity(dayIdx, :), ...
+            'FaceColor', [0 0.4470 0.7410], 'EdgeColor', 'none');
+        ylim(ax, [0 yMax]); xlim(ax, [0 1440]);
         xticks(ax, 0:120:1440);
-        xticklabels(ax, {'00:00','02:00','04:00','06:00','08:00','10:00',...
-                        '12:00','14:00','16:00','18:00','20:00','22:00','00:00'});
-        ylabel(ax, sprintf('Day %d', d), 'FontSize',12);
-        set(ax,'TickDir','out','YTick',[],'Box','off','FontSize',11);
+        xticklabels(ax, { ...
+            '00:00','02:00','04:00','06:00','08:00','10:00', ...
+            '12:00','14:00','16:00','18:00','20:00','22:00','00:00' });
+        ylabel(ax, sprintf('Day %d', dayIdx), 'FontSize', 12);
+        set(ax, 'TickDir', 'out', 'YTick', [], 'Box', 'off', 'FontSize', 11);
         if i == 1
-            title(ax,'Participant Activity Profile','FontSize',16);
+            title(ax, 'Participant Activity Profile', 'FontSize', 16);
         end
-        hold(ax,'off');
+        hold(ax, 'off');
     end
-    xlabel('Time of Day','FontSize',12);
-    exportgraphics(fig, fullfile(outputFolder,sprintf('01_ActivityProfile_Week%d.jpg',wk)),'Resolution',600);
+    xlabel('Time of Day', 'FontSize', 12);
+    exportgraphics(fig, fullfile(outputFolder, ...
+        sprintf('01_ActivityProfile_Week%d.jpg', weekIndex)), 'Resolution', 600);
     close(fig);
 
-    %% 4a_dated) Participant Activity Profile (dd/mm)
-    fig = figure('Color','w','Name',sprintf('Participant Activity Profile – Week %d (dated)',wk),...
-                 'NumberTitle','off','Position',[100 100 1200 900],'Toolbar','none');
-    for i = 1:nThisWeek
-        d = daysIdx(i);
-        ax = subplot(nThisWeek,1,i); hold(ax,'on');
-        maskDark  = binnedLight(d,:) <= 1;
-        maskLight = binnedLight(d,:) > 1;
-        yTop = max(binnedActivity(d,:),[],'omitnan') * 1.2;
-        if any(maskDark)
-            xD = [timeAxis(maskDark), fliplr(timeAxis(maskDark))];
-            yD = [zeros(1,sum(maskDark)), yTop*ones(1,sum(maskDark))];
-            fill(ax, xD, yD, [0.9 0.9 0.9],'EdgeColor','none','FaceAlpha',0.3);
+    %% 5b) Participant Activity Profile (dated)
+    fig = figure('Color', 'w', ...
+                 'Name', sprintf('Participant Activity Profile – Week %d (dated)', weekIndex), ...
+                 'NumberTitle', 'off', 'Position', [100 100 1200 900], ...
+                 'Toolbar', 'none');
+    for i = 1:daysThisWeek
+        dayIdx = dayIndices(i);
+        ax = subplot(daysThisWeek, 1, i); hold(ax, 'on');
+        darkMask  = binnedLight(dayIdx, :) <= 1;
+        lightMask = binnedLight(dayIdx, :) > 1;
+        yMax      = max(binnedActivity(dayIdx, :), [], 'omitnan') * 1.2;
+        if any(darkMask)
+            xDark = [timeAxisMinutes(darkMask), fliplr(timeAxisMinutes(darkMask))];
+            yDark = [zeros(1, sum(darkMask)), yMax * ones(1, sum(darkMask))];
+            fill(ax, xDark, yDark, [0.9 0.9 0.9], 'EdgeColor', 'none', 'FaceAlpha', 0.3);
         end
-        if any(maskLight)
-            xL = [timeAxis(maskLight), fliplr(timeAxis(maskLight))];
-            yL = [zeros(1,sum(maskLight)), yTop*ones(1,sum(maskLight))];
-            fill(ax, xL, yL, [0.9290 0.6940 0.1250],'EdgeColor','none','FaceAlpha',0.3);
+        if any(lightMask)
+            xLight = [timeAxisMinutes(lightMask), fliplr(timeAxisMinutes(lightMask))];
+            yLight = [zeros(1, sum(lightMask)), yMax * ones(1, sum(lightMask))];
+            fill(ax, xLight, yLight, [0.9290 0.6940 0.1250], 'EdgeColor', 'none', 'FaceAlpha', 0.3);
         end
-        bar(ax, timeAxis, binnedActivity(d,:), 'FaceColor',[0 0.4470 0.7410],'EdgeColor','none');
-        ylim(ax, [0 yTop]); xlim(ax, [0 1440]);
+        bar(ax, timeAxisMinutes, binnedActivity(dayIdx, :), ...
+            'FaceColor', [0 0.4470 0.7410], 'EdgeColor', 'none');
+        ylim(ax, [0 yMax]); xlim(ax, [0 1440]);
         xticks(ax, 0:120:1440);
-        xticklabels(ax, {'00:00','02:00','04:00','06:00','08:00','10:00',...
-                        '12:00','14:00','16:00','18:00','20:00','22:00','00:00'});
-        ylabel(ax, dateStrings{i}, 'FontSize',12);
-        set(ax,'TickDir','out','YTick',[],'Box','off','FontSize',11);
+        xticklabels(ax, { ...
+            '00:00','02:00','04:00','06:00','08:00','10:00', ...
+            '12:00','14:00','16:00','18:00','20:00','22:00','00:00' });
+        ylabel(ax, dateLabels{i}, 'FontSize', 12);
+        set(ax, 'TickDir', 'out', 'YTick', [], 'Box', 'off', 'FontSize', 11);
         if i == 1
-            title(ax,'Participant Activity Profile (dd/mm)','FontSize',16);
+            title(ax, 'Participant Activity Profile (dd/mm)', 'FontSize', 16);
         end
-        hold(ax,'off');
+        hold(ax, 'off');
     end
-    xlabel('Time of Day','FontSize',12);
-    exportgraphics(fig, fullfile(outputFolder,sprintf('01_ActivityProfile_Week%d_dated.jpg',wk)),'Resolution',600);
+    xlabel('Time of Day', 'FontSize', 12);
+    exportgraphics(fig, fullfile(outputFolder, ...
+        sprintf('01_ActivityProfile_Week%d_dated.jpg', weekIndex)), 'Resolution', 600);
     close(fig);
 
-    %% 4b) Activity Heatmap (Day #)
-    fig = figure('Color','w','Name',sprintf('Activity Heatmap – Week %d',wk),...
-                 'NumberTitle','off','Position',[100 100 1200 600],'Toolbar','none');
-    blockData = binnedActivity(daysIdx,:);
-    imagesc(timeAxis,1:nThisWeek,blockData);
-    axis xy; set(gca,'YDir','reverse');
-    caxis([prctile(blockData(~isnan(blockData)),5), prctile(blockData(~isnan(blockData)),95)]);
+    %% 5c) Activity Heatmap and dated version
+    blockData = binnedActivity(dayIndices, :);
+    % heatmap with day numbers
+    fig = figure('Color', 'w', ...
+                 'Name', sprintf('Activity Heatmap – Week %d', weekIndex), ...
+                 'NumberTitle', 'off', 'Position', [100 100 1200 600], ...
+                 'Toolbar', 'none');
+    imagesc(timeAxisMinutes, 1:daysThisWeek, blockData);
+    axis xy; set(gca, 'YDir', 'reverse');
+    caxis([prctile(blockData(~isnan(blockData)),5), ...
+           prctile(blockData(~isnan(blockData)),95)]);
     colormap(parula);
     cb = colorbar; cb.Label.String = 'Activity (SVMg)';
-    xlabel('Time of Day','FontSize',12); ylabel('Day','FontSize',12);
+    xlabel('Time of Day', 'FontSize', 12); ylabel('Day', 'FontSize', 12);
     xticks(0:360:1440); xticklabels({'00:00','06:00','12:00','18:00','24:00'});
-    set(gca,'TickDir','out','FontSize',11,'Box','off');
-    title('Activity Heatmap','FontSize',16);
-    exportgraphics(fig, fullfile(outputFolder,sprintf('02_Activity_Heatmap_Week%d.jpg',wk)),'Resolution',600);
+    set(gca, 'TickDir', 'out', 'FontSize', 11, 'Box', 'off');
+    title('Activity Heatmap', 'FontSize', 16);
+    exportgraphics(fig, fullfile(outputFolder, ...
+        sprintf('02_Activity_Heatmap_Week%d.jpg', weekIndex)), 'Resolution', 600);
     close(fig);
-
-    %% 4b_dated) Activity Heatmap (dd/mm)
-    fig = figure('Color','w','Name',sprintf('Activity Heatmap – Week %d (dated)',wk),...
-                 'NumberTitle','off','Position',[100 100 1200 600],'Toolbar','none');
-    imagesc(timeAxis,1:nThisWeek,blockData);
-    axis xy; set(gca,'YDir','reverse');
-    caxis([prctile(blockData(~isnan(blockData)),5), prctile(blockData(~isnan(blockData)),95)]);
+    % dated heatmap
+    fig = figure('Color', 'w', ...
+                 'Name', sprintf('Activity Heatmap – Week %d (dated)', weekIndex), ...
+                 'NumberTitle', 'off', 'Position', [100 100 1200 600], ...
+                 'Toolbar', 'none');
+    imagesc(timeAxisMinutes, 1:daysThisWeek, blockData);
+    axis xy; set(gca, 'YDir', 'reverse');
+    caxis([prctile(blockData(~isnan(blockData)),5), ...
+           prctile(blockData(~isnan(blockData)),95)]);
     colormap(parula);
     cb = colorbar; cb.Label.String = 'Activity (SVMg)';
-    xlabel('Time of Day','FontSize',12);
-    yticks(1:nThisWeek); yticklabels(dateStrings);
+    xlabel('Time of Day', 'FontSize', 12);
+    yticks(1:daysThisWeek); yticklabels(dateLabels);
     xticks(0:360:1440); xticklabels({'00:00','06:00','12:00','18:00','24:00'});
-    set(gca,'TickDir','out','FontSize',11,'Box','off');
-    title('Activity Heatmap (dd/mm)','FontSize',16);
-    exportgraphics(fig, fullfile(outputFolder,sprintf('02_Activity_Heatmap_Week%d_dated.jpg',wk)),'Resolution',600);
+    set(gca, 'TickDir', 'out', 'FontSize', 11, 'Box', 'off');
+    title('Activity Heatmap (dd/mm)', 'FontSize', 16);
+    exportgraphics(fig, fullfile(outputFolder, ...
+        sprintf('02_Activity_Heatmap_Week%d_dated.jpg', weekIndex)), 'Resolution', 600);
     close(fig);
 
-    %% 4c) Daily Activity Bar Chart (Day #)
-    fig = figure('Color','w','Name',sprintf('Daily Activity – Week %d',wk),'NumberTitle','off');
-    da = nansum(binnedActivity(daysIdx,:),2);
-    bar(1:nThisWeek,da,'FaceColor',[0 0.4470 0.7410],'EdgeColor','none');
-    xticks(1:nThisWeek);
-    xticklabels(arrayfun(@(d)sprintf('Day %d',d),daysIdx,'UniformOutput',false));
-    ylabel('Total Activity','FontSize',14); xlabel('Day','FontSize',14);
-    set(gca,'TickDir','out','FontSize',12,'Box','off');
-    title('Total Activity by Day','FontSize',16);
-    exportgraphics(fig, fullfile(outputFolder,sprintf('03_DailyActivity_Week%d.jpg',wk)),'Resolution',600);
+    %% 5d) Daily Activity Bar Chart and dated version
+    dailyTotals = nansum(binnedActivity(dayIndices, :), 2);
+    % by day number
+    fig = figure('Color', 'w', ...
+                 'Name', sprintf('Daily Activity – Week %d', weekIndex), ...
+                 'NumberTitle', 'off');
+    bar(1:daysThisWeek, dailyTotals, 'FaceColor', [0 0.4470 0.7410], 'EdgeColor', 'none');
+    xticks(1:daysThisWeek);
+    xticklabels(arrayfun(@(d) sprintf('Day %d', d), dayIndices, 'UniformOutput', false));
+    ylabel('Total Activity', 'FontSize', 14); xlabel('Day', 'FontSize', 14);
+    set(gca, 'TickDir', 'out', 'FontSize', 12, 'Box', 'off');
+    title('Total Activity by Day', 'FontSize', 16);
+    exportgraphics(fig, fullfile(outputFolder, ...
+        sprintf('03_DailyActivity_Week%d.jpg', weekIndex)), 'Resolution', 600);
+    close(fig);
+    % by date
+    fig = figure('Color', 'w', ...
+                 'Name', sprintf('Daily Activity – Week %d (dated)', weekIndex), ...
+                 'NumberTitle', 'off');
+    bar(1:daysThisWeek, dailyTotals, 'FaceColor', [0 0.4470 0.7410], 'EdgeColor', 'none');
+    xticks(1:daysThisWeek); xticklabels(dateLabels);
+    ylabel('Total Activity', 'FontSize', 14); xlabel('Date', 'FontSize', 14);
+    set(gca, 'TickDir', 'out', 'FontSize', 12, 'Box', 'off');
+    title('Total Activity by Date (dd/mm)', 'FontSize', 16);
+    exportgraphics(fig, fullfile(outputFolder, ...
+        sprintf('03_DailyActivity_Week%d_dated.jpg', weekIndex)), 'Resolution', 600);
     close(fig);
 
-    %% 4c_dated) Daily Activity Bar Chart (dd/mm)
-    fig = figure('Color','w','Name',sprintf('Daily Activity – Week %d (dated)',wk),'NumberTitle','off');
-    bar(1:nThisWeek,da,'FaceColor',[0 0.4470 0.7410],'EdgeColor','none');
-    xticks(1:nThisWeek); xticklabels(dateStrings);
-    ylabel('Total Activity','FontSize',14); xlabel('Date','FontSize',14);
-    set(gca,'TickDir','out','FontSize',12,'Box','off');
-    title('Total Activity by Date (dd/mm)','FontSize',16);
-    exportgraphics(fig, fullfile(outputFolder,sprintf('03_DailyActivity_Week%d_dated.jpg',wk)),'Resolution',600);
+    %% 5e) Daily Light‐Exposure Bar Chart and dated version
+    hoursInLight = sum(binnedLight(dayIndices, :) > 1, 2) / 60;
+    % by day number
+    fig = figure('Color', 'w', ...
+                 'Name', sprintf('Daily Light – Week %d', weekIndex), ...
+                 'NumberTitle', 'off');
+    bar(1:daysThisWeek, hoursInLight, 'FaceColor', [0.8500 0.3250 0.0980], 'EdgeColor', 'none');
+    xticks(1:daysThisWeek);
+    xticklabels(arrayfun(@(d) sprintf('Day %d', d), dayIndices, 'UniformOutput', false));
+    ylabel('Hours in Light', 'FontSize', 14); xlabel('Day', 'FontSize', 14);
+    set(gca, 'TickDir', 'out', 'FontSize', 12, 'Box', 'off');
+    title('Daily Hours in Light', 'FontSize', 16);
+    exportgraphics(fig, fullfile(outputFolder, ...
+        sprintf('04_DailyLight_Week%d.jpg', weekIndex)), 'Resolution', 600);
+    close(fig);
+    % by date
+    fig = figure('Color', 'w', ...
+                 'Name', sprintf('Daily Light – Week %d (dated)', weekIndex), ...
+                 'NumberTitle', 'off');
+    bar(1:daysThisWeek, hoursInLight, 'FaceColor', [0.8500 0.3250 0.0980], 'EdgeColor', 'none');
+    xticks(1:daysThisWeek); xticklabels(dateLabels);
+    ylabel('Hours in Light', 'FontSize', 14); xlabel('Date', 'FontSize', 14);
+    set(gca, 'TickDir', 'out', 'FontSize', 12, 'Box', 'off');
+    title('Daily Hours in Light by Date (dd/mm)', 'FontSize', 16);
+    exportgraphics(fig, fullfile(outputFolder, ...
+        sprintf('04_DailyLight_Week%d_dated.jpg', weekIndex)), 'Resolution', 600);
     close(fig);
 
-    %% 4d) Daily Light Exposure Bar Chart (Day #)
-    fig = figure('Color','w','Name',sprintf('Daily Light – Week %d',wk),'NumberTitle','off');
-    dl = sum(binnedLight(daysIdx,:)>1,2)/60;
-    bar(1:nThisWeek,dl,'FaceColor',[0.8500 0.3250 0.0980],'EdgeColor','none');
-    xticks(1:nThisWeek);
-    xticklabels(arrayfun(@(d)sprintf('Day %d',d),daysIdx,'UniformOutput',false));
-    ylabel('Hours in Light','FontSize',14); xlabel('Day','FontSize',14);
-    set(gca,'TickDir','out','FontSize',12,'Box','off');
-    title('Daily Hours in Light','FontSize',16);
-    exportgraphics(fig, fullfile(outputFolder,sprintf('04_DailyLight_Week%d.jpg',wk)),'Resolution',600);
-    close(fig);
-
-    %% 4d_dated) Daily Light Exposure Bar Chart (dd/mm)
-    fig = figure('Color','w','Name',sprintf('Daily Light – Week %d (dated)',wk),'NumberTitle','off');
-    bar(1:nThisWeek,dl,'FaceColor',[0.8500 0.3250 0.0980],'EdgeColor','none');
-    xticks(1:nThisWeek); xticklabels(dateStrings);
-    ylabel('Hours in Light','FontSize',14); xlabel('Date','FontSize',14);
-    set(gca,'TickDir','out','FontSize',12,'Box','off');
-    title('Daily Hours in Light by Date (dd/mm)','FontSize',16);
-    exportgraphics(fig, fullfile(outputFolder,sprintf('04_DailyLight_Week%d_dated.jpg',wk)),'Resolution',600);
-    close(fig);
-
-    %% 4e) Low-Activity Call-outs (Day #)
-    fig = figure('Color','w','Name',sprintf('Low Activity – Week %d',wk),'NumberTitle','off');
-    bar(1:nThisWeek,da,'FaceColor',[0 0.4470 0.7410],'EdgeColor','none'); hold on;
-    lowIdx = find(da < (mean(da)-std(da)));
-    for idx = lowIdx'
-        text(idx, da(idx)+0.05*max(da), 'Low','Color','r','FontSize',12,'HorizontalAlign','center');
+    %% 5f) Low‐Activity Call‐outs and dated version
+    % by day number
+    fig = figure('Color', 'w', ...
+                 'Name', sprintf('Low Activity – Week %d', weekIndex), ...
+                 'NumberTitle', 'off');
+    bar(1:daysThisWeek, dailyTotals, 'FaceColor', [0 0.4470 0.7410], 'EdgeColor', 'none');
+    hold on;
+    lowThreshold = mean(dailyTotals) - std(dailyTotals);
+    lowIndices   = find(dailyTotals < lowThreshold);
+    for idx = lowIndices'
+        text(idx, dailyTotals(idx) + 0.05*max(dailyTotals), 'Low', ...
+             'Color', 'r', 'FontSize', 12, 'HorizontalAlign', 'center');
     end
-    xticks(1:nThisWeek);
-    xticklabels(arrayfun(@(d)sprintf('Day %d',d),daysIdx,'UniformOutput',false));
-    ylabel('Total Activity','FontSize',14); xlabel('Day','FontSize',14);
-    set(gca,'TickDir','out','FontSize',12,'Box','off');
-    title('Low-Activity Call-outs','FontSize',16);
-    exportgraphics(fig, fullfile(outputFolder,sprintf('05_LowActivity_Week%d.jpg',wk)),'Resolution',600);
+    xticks(1:daysThisWeek);
+    xticklabels(arrayfun(@(d) sprintf('Day %d', d), dayIndices, 'UniformOutput', false));
+    ylabel('Total Activity', 'FontSize', 14); xlabel('Day', 'FontSize', 14);
+    set(gca, 'TickDir', 'out', 'FontSize', 12, 'Box', 'off');
+    title('Low-Activity Call-outs', 'FontSize', 16);
+    exportgraphics(fig, fullfile(outputFolder, ...
+        sprintf('05_LowActivity_Week%d.jpg', weekIndex)), 'Resolution', 600);
     close(fig);
-
-    %% 4e_dated) Low-Activity Call-outs (dd/mm)
-    fig = figure('Color','w','Name',sprintf('Low Activity – Week %d (dated)',wk),'NumberTitle','off');
-    bar(1:nThisWeek,da,'FaceColor',[0 0.4470 0.7410],'EdgeColor','none'); hold on;
-    for idx = lowIdx'
-        text(idx, da(idx)+0.05*max(da), 'Low','Color','r','FontSize',12,'HorizontalAlign','center');
+    % by date
+    fig = figure('Color', 'w', ...
+                 'Name', sprintf('Low Activity – Week %d (dated)', weekIndex), ...
+                 'NumberTitle', 'off');
+    bar(1:daysThisWeek, dailyTotals, 'FaceColor', [0 0.4470 0.7410], 'EdgeColor', 'none');
+    hold on;
+    for idx = lowIndices'
+        text(idx, dailyTotals(idx) + 0.05*max(dailyTotals), 'Low', ...
+             'Color', 'r', 'FontSize', 12, 'HorizontalAlign', 'center');
     end
-    xticks(1:nThisWeek); xticklabels(dateStrings);
-    ylabel('Total Activity','FontSize',14); xlabel('Date','FontSize',14);
-    set(gca,'TickDir','out','FontSize',12,'Box','off');
-    title('Low-Activity Call-outs by Date (dd/mm)','FontSize',16);
-    exportgraphics(fig, fullfile(outputFolder,sprintf('05_LowActivity_Week%d_dated.jpg',wk)),'Resolution',600);
+    xticks(1:daysThisWeek); xticklabels(dateLabels);
+    ylabel('Total Activity', 'FontSize', 14); xlabel('Date', 'FontSize', 14);
+    set(gca, 'TickDir', 'out', 'FontSize', 12, 'Box', 'off');
+    title('Low-Activity Call-outs by Date (dd/mm)', 'FontSize', 16);
+    exportgraphics(fig, fullfile(outputFolder, ...
+        sprintf('05_LowActivity_Week%d_dated.jpg', weekIndex)), 'Resolution', 600);
     close(fig);
 end
 
-%% 5) Area Plot: Light Daily Distribution
+%% 6) Full‐period light daily distribution area plot
 hourOfDay      = hour(timestamps);
-hourlyAvgLight = arrayfun(@(h) mean(lLight(hourOfDay==h),'omitnan'),0:23);
+hourlyAverage  = arrayfun(@(h) mean(lightLevels(hourOfDay==h), 'omitnan'), 0:23);
 
-fig = figure('Color','w','Name','Light Daily Distribution','NumberTitle','off',...
-             'Position',[100 100 900 500],'Toolbar','none');
-area(0:23, hourlyAvgLight, 'FaceColor',[0.4 0.7608 0.6471]);
-title('Light Daily Distribution','FontSize',16,'FontWeight','bold');
-xlabel('Hour of Day (0 = Midnight)','FontSize',14);
-ylabel('Average Light (LUX)','FontSize',14);
+fig = figure('Color', 'w', 'Name', 'Light Daily Distribution', ...
+             'NumberTitle', 'off', 'Position', [100 100 900 500], 'Toolbar', 'none');
+area(0:23, hourlyAverage, 'FaceColor', [0.4 0.7608 0.6471]);
+title('Light Daily Distribution', 'FontSize', 16, 'FontWeight', 'bold');
+xlabel('Hour of Day (0 = Midnight)', 'FontSize', 14);
+ylabel('Average Light (LUX)', 'FontSize', 14);
 xlim([0 23]); xticks(0:1:23);
-set(gca,'TickDir','out','FontSize',11,'Box','off');
-exportgraphics(fig, fullfile(outputFolder,'06_LightDailyDistribution.jpg'),'Resolution',600);
+set(gca, 'TickDir', 'out', 'FontSize', 11, 'Box', 'off');
+exportgraphics(fig, fullfile(outputFolder, '06_LightDailyDistribution.jpg'), 'Resolution', 600);
 close(fig);
 
-%% 6) Call-Out Sheet for Quantitative Summary + Rhythm Metrics
+%% 7) Call‐Out Sheet for Quantitative Summary + Rhythm Metrics
 
-% Core daily metrics
-days       = (1:numDays)';
-totalAct   = nansum(binnedActivity,2);
-hoursLight = sum(binnedLight>1,2) / 60;
+% Daily metrics
+dayIndicesAll = (1:totalDays)';
+totalActivity = nansum(binnedActivity, 2);
+hoursInLight  = sum(binnedLight>1, 2) / 60;
 
 % Peak activity time
-peakIdx  = arrayfun(@(d) find(binnedActivity(d,:)==max(binnedActivity(d,:)),1), days);
-peakTime = timeAxis(peakIdx)';
-peakDur  = minutes(peakTime); peakDur.Format = 'hh:mm:ss';
-peakStr  = string(peakDur);
+peakIndices   = arrayfun(@(d) find(binnedActivity(d,:)==max(binnedActivity(d,:)), 1), dayIndicesAll);
+peakTimes     = timeAxisMinutes(peakIndices)';
+peakDurations = minutes(peakTimes); peakDurations.Format = 'hh:mm:ss';
+peakStrings   = string(peakDurations);
 
-% Light start/end times
-lightStartMin = nan(numDays,1);
-lightEndMin   = nan(numDays,1);
-for d = 1:numDays
-    mask = binnedLight(d,:)>1;
+% Light start and end times
+lightStartMin = nan(totalDays,1);
+lightEndMin   = nan(totalDays,1);
+for d = 1:totalDays
+    mask = binnedLight(d,:) > 1;
     if any(mask)
-        lightStartMin(d) = timeAxis(find(mask,1,'first'));
-        lightEndMin(d)   = timeAxis(find(mask,1','last'));
+        lightStartMin(d) = timeAxisMinutes(find(mask,1,'first'));
+        lightEndMin(d)   = timeAxisMinutes(find(mask,1,'last'));
     end
 end
-startDur = minutes(lightStartMin); startDur.Format = 'hh:mm:ss';
-endDur   = minutes(lightEndMin);   endDur.Format   = 'hh:mm:ss';
-startStr = string(startDur);
-endStr   = string(endDur);
+startDurations = minutes(lightStartMin); startDurations.Format = 'hh:mm:ss';
+endDurations   = minutes(lightEndMin);   endDurations.Format   = 'hh:mm:ss';
+startStrings   = string(startDurations);
+endStrings     = string(endDurations);
 
-% L5/M10 on activity
-L5_window  = 5*60;
-M10_window = 10*60;
-L5_start   = NaT(numDays,1);
-M10_start  = NaT(numDays,1);
-L5_mean    = NaN(numDays,1);
-M10_mean   = NaN(numDays,1);
+% L5 and M10 on activity
+L5WindowMinutes  = 5 * 60;
+M10WindowMinutes = 10 * 60;
+L5StartTimes     = NaT(totalDays,1);
+M10StartTimes    = NaT(totalDays,1);
+L5Means          = nan(totalDays,1);
+M10Means         = nan(totalDays,1);
 
-for d = 1:numDays
+for d = 1:totalDays
     signal = binnedActivity(d,:);
-    conv5   = conv(signal, ones(1,L5_window)/L5_window,  'valid');
-    conv10  = conv(signal, ones(1,M10_window)/M10_window,'valid');
-    [L5_mean(d), idx5]   = min(conv5);
-    [M10_mean(d), idx10] = max(conv10);
-    L5_start(d)  = dayDates(d) + minutes(idx5-1);
-    M10_start(d) = dayDates(d) + minutes(idx10-1);
+    rolling5  = conv(signal, ones(1,L5WindowMinutes)/L5WindowMinutes,  'valid');
+    rolling10 = conv(signal, ones(1,M10WindowMinutes)/M10WindowMinutes,'valid');
+    [L5Means(d), idxL5]   = min(rolling5);
+    [M10Means(d), idxM10] = max(rolling10);
+    L5StartTimes(d)  = dayStartDates(d) + minutes(idxL5-1);
+    M10StartTimes(d) = dayStartDates(d) + minutes(idxM10-1);
 end
 
-L5_str  = string(timeofday(L5_start));   % hh:mm:ss
-M10_str = string(timeofday(M10_start));  % hh:mm:ss
+L5Strings  = string(timeofday(L5StartTimes));   % hh:mm:ss
+M10Strings = string(timeofday(M10StartTimes));  % hh:mm:ss
 
-% Interdaily Stability (IS) & Intradaily Variability (IV)
-M   = binnedActivity;
-mh  = nanmean(M,1);
-m   = nanmean(M(:));
-IS  = (numDays * nansum((mh - m).^2)) / nansum((M(:) - m).^2);
-x   = M(:); valid = ~isnan(x); nTot = sum(valid);
-d2  = diff(x(valid));
-IV  = (nTot * nansum(d2.^2)/(nTot-1)) / nansum((x(valid) - m).^2);
+% Interdaily Stability and Intradaily Variability
+MMatrix = binnedActivity;
+meanHourly = nanmean(MMatrix, 1);
+grandMean  = nanmean(MMatrix(:));
+ISMetric   = (totalDays * nansum((meanHourly - grandMean).^2)) / nansum((MMatrix(:) - grandMean).^2);
+flatData   = MMatrix(:);
+validData  = ~isnan(flatData);
+diffs      = diff(flatData(validData));
+IVMetric   = (sum(validData) * nansum(diffs.^2)/(sum(validData)-1)) / nansum((flatData(validData)-grandMean).^2);
 
-% Turn IS & IV into full-length columns
-IS_col = [IS;  nan(numDays-1,1)];
-IV_col = [IV;  nan(numDays-1,1)];
+% Convert IS and IV to full-length columns
+ISColumn = [ISMetric;    nan(totalDays-1,1)];
+IVColumn = [IVMetric;    nan(totalDays-1,1)];
 
-% Normative ranges
-IS_norm     = "0.58-0.73";
-IV_norm     = "0.56-0.77";
-IS_norm_col = repmat(IS_norm, numDays,1);
-IV_norm_col = repmat(IV_norm, numDays,1);
+% Normative ranges columns
+ISRange      = "0.58-0.73";
+IVRange      = "0.56-0.77";
+ISRangeColumn = repmat(ISRange, totalDays,1);
+IVRangeColumn = repmat(IVRange, totalDays,1);
 
 % Write to Excel with two sheets
-excelFile = fullfile(outputFolder,'07_Participant_results.xlsx');
+excelWorkbook = fullfile(outputFolder, '07_Participant_results.xlsx');
 
-% --- Sheet 1: Summary ---
-Callout = table( ...
-    dayDates, weekDays, days, totalAct, hoursLight, peakStr, startStr, endStr, ...
-    L5_str, L5_mean, M10_str, M10_mean, ...
-    IS_col, IV_col, ...
-    IS_norm_col, IV_norm_col, ...
-    'VariableNames',{ ...
-      'Date','Weekday','Day','TotalActivity','HoursInLight', ...
-      'PeakActivityTime','LightStartTime','LightEndTime', ...
-      'L5_StartTime','L5_Mean','M10_StartTime','M10_Mean', ...
-      'InterdailyStability','IntradailyVariability', ...
-      'IS_NormalRange','IV_NormalRange' ...
-    } ...
+% Sheet 1: Summary
+SummaryTable = table( ...
+    dayStartDates, weekDayNames, dayIndicesAll, totalActivity, hoursInLight, ...
+    peakStrings, startStrings, endStrings, ...
+    L5Strings, L5Means, M10Strings, M10Means, ...
+    ISColumn, IVColumn, ...
+    ISRangeColumn, IVRangeColumn, ...
+    'VariableNames', { ...
+      'Date', 'Weekday', 'Day', 'TotalActivity', 'HoursInLight', ...
+      'PeakActivityTime', 'LightStartTime', 'LightEndTime', ...
+      'L5_StartTime', 'L5_Mean', 'M10_StartTime', 'M10_Mean', ...
+      'InterdailyStability', 'IntradailyVariability', ...
+      'IS_NormalRange', 'IV_NormalRange' } ...
 );
-writetable(Callout, excelFile, 'Sheet', 'Summary');
+writetable(SummaryTable, excelWorkbook, 'Sheet', 'Summary');
 
-% --- Sheet 2: Definitions ---
-headers   = {'Term','Definition','Interpretation'};
-termsData = {
+% Sheet 2: Definitions
+DefinitionHeaders = {'Term','Definition','Interpretation'};
+DefinitionData = {
   'Date',                 'Calendar date of recording',                          'Aligns metrics to calendar days';
   'Weekday',              'Day of the week',                                     'Distinguishes weekday vs weekend';
   'Day',                  'Sequential day index',                                'Day number since start';
-  'TotalActivity',        'Sum of minute-by-minute activity',                    'Overall daily movement';
-  'HoursInLight',         'Total hours with LUX >1',                             'Duration of light exposure';
-  'PeakActivityTime',     'Time of maximum minute activity',                     'Indicates peak movement time';
-  'LightStartTime',       'Time of first LUX >1',                                'Onset of light exposure';
-  'LightEndTime',         'Time of last LUX >1',                                 'End of light exposure';
-  'L5_StartTime',         'The clock time at which the consecutive 5-hour window of lowest mean activity begins',              'Marks the onset of the daily rest-activity trough. A later or more variable L5 start can signal disrupted rest';
-  'L5_Mean',              'The average minute-by-minute activity count across that lowest 5-hour window',                      'Quantifies the depth of the rest-activity trough. Lower values imply deeper or more consolidated rest periods';
-  'M10_StartTime',        'The clock time at which the consecutive 10-hour window of highest mean activity begins',            'Identifies when the most sustained active period starts. Shifts earlier or later can indicate advanced/delayed phase';
-  'M10_Mean',             'The average minute-by-minute activity count across that highest 10-hour window',                     'Reflects overall vigour during peak activity. Higher values suggest stronger or more sustained daytime activity';
-  'InterdailyStability',  'Strength of 24-h rhythm',                             'Higher = more stable';
-  'IntradailyVariability','Fragmentation of activity rhythm',                    'Higher = more fragmented';
-  'IS_NormalRange',       'Normative IS range (0.58–0.73)',                      'Typical healthy range';
-  'IV_NormalRange',       'Normative IV range (0.56–0.77)',                      'Typical healthy range'
+  'TotalActivity',        'Sum of minute‐by‐minute activity',                    'Overall daily movement';
+  'HoursInLight',         'Total hours during which light level is greater than one LUX', 'Duration of light exposure';
+  'PeakActivityTime',     'Clock time of maximum minute activity',               'Indicates peak movement time';
+  'LightStartTime',       'Clock time of first minute exceeding one LUX',        'Onset of daily light exposure';
+  'LightEndTime',         'Clock time of last minute exceeding one LUX',         'End of daily light exposure';
+  'L5_StartTime',         'Clock time when the five‐hour window of lowest mean activity begins', 'Onset of rest‐activity trough; later or variable times may indicate disturbed rest';
+  'L5_Mean',              'Average activity counts during that lowest five‐hour window', 'Depth of rest‐activity trough; lower values indicate more consolidated rest';
+  'M10_StartTime',        'Clock time when the ten‐hour window of highest mean activity begins', 'Onset of most sustained active period; shifts may indicate phase changes';
+  'M10_Mean',             'Average activity counts during that highest ten‐hour window', 'Strength of daytime activity; higher values indicate more vigorous activity';
+  'InterdailyStability',  'Measure of consistency of activity pattern across days', 'Higher values indicate more stable daily rhythm';
+  'IntradailyVariability','Measure of fragmentation in the activity rhythm within days', 'Higher values indicate more fragmented activity';
+  'IS_NormalRange',       'Typical range for Interdaily Stability (0.58 to 0.73)',    'Healthy adult reference range';
+  'IV_NormalRange',       'Typical range for Intradaily Variability (0.56 to 0.77)', 'Healthy adult reference range'
 };
-writecell([headers; termsData], excelFile, 'Sheet', 'Definitions');
+writecell([DefinitionHeaders; DefinitionData], excelWorkbook, 'Sheet', 'Definitions');
 
-%% 7) Bundle all figures into a PowerPoint presentation
+%% 8) Bundle all JPEG figures into a PowerPoint presentation
 import mlreportgen.ppt.*;
 
-pptFile = fullfile(outputFolder,'AllFigures_Report.pptx');
-ppt     = Presentation(pptFile);
-open(ppt);
+presentationFile = fullfile(outputFolder, 'AllFigures_Report.pptx');
+presentation = Presentation(presentationFile);
+open(presentation);
 
-jpgs = dir(fullfile(outputFolder,'*.jpg'));
-for i = 1:numel(jpgs)
-    slide = add(ppt,'Title and Content');
-    replace(slide,'Title', erase(jpgs(i).name,'.jpg'));
-    pic = Picture(fullfile(outputFolder,jpgs(i).name));
-    replace(slide,'Content',pic);
+jpegFiles = dir(fullfile(outputFolder, '*.jpg'));
+for i = 1:numel(jpegFiles)
+    slide = add(presentation, 'Title and Content');
+    replace(slide, 'Title', erase(jpegFiles(i).name, '.jpg'));
+    image = Picture(fullfile(outputFolder, jpegFiles(i).name));
+    replace(slide, 'Content', image);
 end
 
-close(ppt);
+close(presentation);
 close all;
