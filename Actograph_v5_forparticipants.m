@@ -3,32 +3,41 @@
 % ------------------------------------------------------------------------
 % PURPOSE:
 %   Processes raw actigraphy `.xlsx` data to generate:
-%     • Weekly participant activity profiles
-%     • Weekly activity heatmaps
-%     • Weekly daily activity and light‐exposure bar charts
-%     • Weekly low‐activity call‐outs
-%     • A full‐period light daily distribution area plot
+%     • Weekly rest–activity visualisations (profiles and heatmaps)
+%     • Weekly daily summary bar charts (activity totals, light exposure)
+%     • Weekly low-activity call-out plots
+%     • A full-period light daily distribution area plot
+%     • Calculation of L5 (lowest-5-hour) and M10 (highest-10-hour) on activity
+%     • Computation of Interdaily Stability (IS) and Intradaily Variability (IV)
 %     • An Excel workbook with two sheets:
-%         – Summary of key daily metrics and rhythm metrics, including L5/M10 on activity
-%         – Definitions of all terms with interpretation guidance
+%         – “Summary”: key daily metrics, L5/M10, IS/IV
+%         – “Definitions”: term definitions and interpretation guidance
+%     • A PowerPoint deck bundling all JPEG figures
+%
+% FEATURES:
+%   • Prompts user to select the input Excel file with raw actigraphy:
+%       – “Time stamp” (yyyy-MM-dd HH:mm:ss:SSS)
+%       – “Sum of vector (SVMg)” (activity counts)
+%       – “Light level (LUX)” (light intensity)
+%       – “Button (1/0)” (event markers)
+%   • Offers choice to include only complete 24-hour days or all days
+%   • Bins data into 1-minute resolution per day
+%   • Generates both “Day #” and “dd/mm” labelled versions of each weekly plot
+%   • Writes an Excel file summarising all metrics and a definitions sheet
+%   • Exports high-resolution JPEGs and compiles them into a PowerPoint
 %
 % HOW TO RUN:
 %   1. Run this script in MATLAB.
 %   2. When prompted:
-%        – Select the input Excel file containing the actigraphy data.
-%        – Choose whether to plot only complete 24‐hour days or all days.
-%        – Select or create the output folder for saving JPEG images.
-%   3. The script will process the data and save figures and an Excel workbook.
-%
-% NOTE:
-%   Input Excel must have columns:
-%     “Time stamp”       (format: yyyy‐MM‐dd HH:mm:ss:SSS)
-%     “Sum of vector (SVMg)”  (activity)
-%     “Light level (LUX)”      (light intensity)
-%     “Button (1/0)”           (event markers)
+%        – Select the input `.xlsx` file.
+%        – Choose whether to plot only complete 24-hour days or all days.
+%        – Select (or create) the output folder for saving JPEGs and the Excel workbook.
+%   3. The script will process the data, save all figures, write the workbook,
+%      and generate a PowerPoint presentation.
 % ------------------------------------------------------------------------
 
 clc; clearvars; close all;
+
 
 %% 1) Select and load the Excel file
 [fileName, filePath] = uigetfile('*.xlsx', 'Select the input Excel file');
