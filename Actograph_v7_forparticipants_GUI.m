@@ -1,4 +1,4 @@
-function Actograph_v7_forparticipants_GUI
+function Actograph_v7_forparticipants_GUI.m
 % ------------------------------------------------------------------------
 % Actograph Analysis & Summary GUI for Parkinson's Participants
 % ------------------------------------------------------------------------
