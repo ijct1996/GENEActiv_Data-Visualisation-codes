@@ -1,4 +1,4 @@
-function Actograph_v7_forparticipants_GUI.m
+function Actograph_v7_forparticipants_GUI
 % ------------------------------------------------------------------------
 % Actograph Analysis & Summary GUI for Parkinson's Participants
 % ------------------------------------------------------------------------
@@ -699,16 +699,21 @@ function Actograph_v7_forparticipants_GUI.m
             % Always write Definitions sheet
             definitions = {
               'Date','Calendar date of recording','Aligns metrics to calendar days';
-              'Weekday','Day of the week','Distinguishes weekday versus weekend';
+              'Weekday','Day of the week','Distinguishes weekday vs weekend';
               'Day','Sequential day index','Day number since start';
-              'TotalActivity','Sum of minute-by-minute activity','Overall daily movement';
-              'HoursInLight','Total hours with LUX > threshold','Duration of light exposure';
-              'L5_StartTime','Clock time when five-hour window of lowest mean begins','Rest-activity trough onset';
-              'L5_Mean','Mean activity during that window','Depth of rest trough';
-              'M10_StartTime','Clock time when ten-hour window of highest mean begins','Activity peak onset';
-              'M10_Mean','Mean activity during that window','Strength of activity peak';
-              'MinTemperature','Minimum recorded temperature per day (°C)','Daily minimum temperature';
-              'MaxTemperature','Maximum recorded temperature per day (°C)','Daily maximum temperature'
+              'TotalActivity','Sum of minute‐by‐minute activity','Overall daily movement';
+              'HoursInLight','Total hours with LUX >1','Duration of light exposure';
+              'PeakActivityTime','Clock time of maximum activity','Indicates peak movement time';
+              'LightStartTime','Clock time of first minute >1 LUX','Onset of daily light exposure';
+              'LightEndTime','Clock time of last minute >1 LUX','End of daily light exposure';
+              'L5_StartTime','Clock time when the five‐hour window of lowest mean activity begins','Rest‐activity trough onset';
+              'L5_Mean','Average activity during that window','Depth of rest trough';
+              'M10_StartTime','Clock time when the ten‐hour window of highest mean activity begins','Activity peak onset';
+              'M10_Mean','Average activity during that window','Strength of activity peak';
+              'InterdailyStability','Consistency of daily rhythm','Higher = more stable';
+              'IntradailyVariability','Fragmentation within day','Higher = more fragmented';
+              'IS_NormalRange','Typical IS range (0.58‐0.73)','Healthy adult reference';
+              'IV_NormalRange','Typical IV range (0.56‐0.77)','Healthy adult reference'
             };
             writecell([{'Term','Definition','Interpretation'}; definitions], ...
                       summaryFile, 'Sheet','Definitions');
