@@ -1,42 +1,59 @@
 function Actograph_v7_forparticipants_GUI
 % ------------------------------------------------------------------------
-% App: Actograph Analysis and Summary for Parkinson's Participants
+% Actograph Analysis & Summary GUI for Parkinson's Participants
 % ------------------------------------------------------------------------
-% This application provides a single, self‐contained interface to:
-%   • Select raw actigraphy data and an output folder
-%   • Enter a global light threshold (lux)
-%   • Choose to include only complete 24‐hour days or all days
-%   • Choose axis style: anonymised Day #, dated dd/mm, or both
-%   • Select which outputs to generate
-%   • Bin data into 1‐minute resolution per day (auto‐detected)
-%   • Generate weekly rest–activity profiles (bar plots)
-%   • Generate weekly daily activity bar charts (anonymised and/or dated)
-%   • Generate weekly low‐activity call‐outs (anonymised and/or dated)
-%   • Generate weekly activity heatmaps
-%   • Generate weekly daily temperature profiles (bar plots with light shading,
-%       fixed y‐axis 15–50 °C, tick every 20 °C)
-%   • Generate daily light tracker plots with full‐range and 0–10 LUX panels
-%   • Generate weekly light distribution area plots (week‐specific)
-%   • Compute L5 (lowest‐5‐hour) and M10 (highest‐10‐hour) activity metrics
-%   • Compute Interdaily Stability (IS) and Intradaily Variability (IV)
-%   • Export high‐resolution JPEGs (white backgrounds)
-%   • Write an Excel workbook with three sheets:
-%       – "Summary": daily metrics, L5/M10, Min/Max Temperature
-%       – "Metrics": IS, IV, and normal ranges
-%       – "Definitions": glossary of terms and interpretation guidance
-%   • Compile all figures into a PowerPoint presentation
+% A self-contained MATLAB app for processing wrist-worn actigraphy data.
+% Load your raw data into the provided "GENEActiv Data Template.xlsx":
+%   1. Open "GENEActiv Data Template.xlsx" (included with this code).
+%   2. Copy your raw CSV output into the template's "RawData" sheet.
+%   3. Save the template as your input file.
 %
-% Key UI features:
-%   • File picker for the input `.xlsx` file
-%   • Numeric field for global light threshold
-%   • Checkbox for filtering to complete days
-%   • Dropdown for axis style
-%   • Checkboxes for selecting outputs
-%   • Folder picker for outputs
-%   • Run button with status updates
+% This application provides a single, self-contained interface to:
+%   • Select raw actigraphy data and an output folder  
+%   • Enter a global light threshold (lux)  
+%   • Choose to include only complete 24-hour days or all days  
+%   • Choose axis style: anonymised Day #, dated dd/mm, or both  
+%   • Select which outputs to generate (including combined profile)  
+%   • Bin data into 1-minute resolution per day (auto-detected)  
+%   • Generate weekly rest–activity profiles (bar plots)  
+%   • Generate weekly daily activity bar charts (anonymised and/or dated)  
+%   • Generate weekly low-activity call-outs (anonymised and/or dated)  
+%   • Generate weekly activity heatmaps  
+%   • Generate weekly daily temperature profiles  
+%       – Bar plots with light shading  
+%       – Fixed y-axis 15–50 °C, tick every 20 °C  
+%   • Generate daily light tracker plots  
+%       – Full-range and 0–10 LUX panels  
+%   • Generate weekly light distribution area plots (week-specific)  
+%   • Generate weekly combined profiles  
+%       – Activity bars, light shading, temperature line on second y-axis  
+%   • Compute L5 (lowest-5-hour) and M10 (highest-10-hour) activity metrics  
+%   • Compute Interdaily Stability (IS) and Intradaily Variability (IV)  
+%   • Export high-resolution JPEGs (white backgrounds)  
+%   • Write an Excel workbook with three sheets:  
+%       – "Summary": daily metrics, L5/M10, Min/Max Temperature  
+%       – "Metrics": IS, IV, and normal ranges  
+%       – "Definitions": glossary of terms and interpretation guidance  
+%   • Compile all figures into a PowerPoint presentation  
 %
-% Usage:
-%   Run this function, fill in the fields, select desired outputs, and click Run.
+% Quick Start
+%   Run in MATLAB:  
+%       >> Actograph_v7_forparticipants_GUI  
+%   1. Ensure your data are in "GENEActiv Data Template.xlsx".  
+%   2. Select that file and choose an output folder.  
+%   3. Adjust light threshold, day filtering and axis style.  
+%   4. Tick the outputs you need.  
+%   5. Click "Run"—sit back, it'll do the rest.  
+%
+% Requirements
+%   • MATLAB R2019a or newer  
+%   • Report Generator toolbox (for PowerPoint export)  
+%
+% Notes
+%   – Designed for Parkinson's cohort studies but easily adapted.  
+%   – All figures saved as high-res JPEGs; Excel and PPT files are optional.  
+%
+% © 2025 [Isaiah J Ting, Lall Lab]  
 % ------------------------------------------------------------------------
 
     clc; clearvars; close all;
@@ -75,18 +92,30 @@ function Actograph_v7_forparticipants_GUI
 
     % Outputs selection panel
     pnlOutputs = uipanel(fig,'Title','Select Outputs','Position',[20 260 560 140]);
-    chkAll           = uicheckbox(pnlOutputs,'Position',[10 100 100 20],'Text','All outputs', ...
-                        'Value',true,'ValueChangedFcn',@toggleAllOutputs);
-    chkActivityProf  = uicheckbox(pnlOutputs,'Position',[10 75 200 20],'Text','Activity profiles','Value',true);
-    chkDailyActivity = uicheckbox(pnlOutputs,'Position',[10 50 200 20],'Text','Daily activity bar charts','Value',true);
-    chkLowActivity   = uicheckbox(pnlOutputs,'Position',[10 25 200 20],'Text','Low‐activity call‐outs','Value',true);
-    chkHeatmap       = uicheckbox(pnlOutputs,'Position',[220 75 200 20],'Text','Activity heatmaps','Value',true);
-    chkTempProfiles  = uicheckbox(pnlOutputs,'Position',[220 50 200 20],'Text','Temperature profiles','Value',true);
-    chkLightTracker  = uicheckbox(pnlOutputs,'Position',[420 75 200 20],'Text','Daily light tracker','Value',true);
-    chkLightDist     = uicheckbox(pnlOutputs,'Position',[420 50 200 20],'Text','Light distribution','Value',true);
-    chkExcelSummary  = uicheckbox(pnlOutputs,'Position',[10 0 200 20],'Text','Excel summary','Value',true);
-    chkExcelMetrics  = uicheckbox(pnlOutputs,'Position',[220 0 200 20],'Text','Excel metrics','Value',true);
-    chkPowerPoint    = uicheckbox(pnlOutputs,'Position',[420 0 200 20],'Text','PowerPoint','Value',true);
+    chkAll             = uicheckbox(pnlOutputs,'Position',[10 100 100 20], ...
+                          'Text','All outputs','Value',true,'ValueChangedFcn',@toggleAllOutputs);
+    chkActivityProf    = uicheckbox(pnlOutputs,'Position',[10 75 200 20], ...
+                          'Text','Activity profiles','Value',true);
+    chkDailyActivity   = uicheckbox(pnlOutputs,'Position',[10 50 200 20], ...
+                          'Text','Daily activity bar charts','Value',true);
+    chkLowActivity     = uicheckbox(pnlOutputs,'Position',[10 25 200 20], ...
+                          'Text','Low‐activity call‐outs','Value',true);
+    chkHeatmap         = uicheckbox(pnlOutputs,'Position',[220 75 200 20], ...
+                          'Text','Activity heatmaps','Value',true);
+    chkTempProfiles    = uicheckbox(pnlOutputs,'Position',[220 50 200 20], ...
+                          'Text','Temperature profiles','Value',true);
+    chkCombined        = uicheckbox(pnlOutputs,'Position',[220 25 300 20], ...
+                          'Text','Combined profile (Activity, Light, Temp)','Value',false);
+    chkLightTracker    = uicheckbox(pnlOutputs,'Position',[420 75 200 20], ...
+                          'Text','Daily light tracker','Value',true);
+    chkLightDist       = uicheckbox(pnlOutputs,'Position',[420 50 200 20], ...
+                          'Text','Light distribution','Value',true);
+    chkExcelSummary    = uicheckbox(pnlOutputs,'Position',[10 0 200 20], ...
+                          'Text','Excel summary','Value',true);
+    chkExcelMetrics    = uicheckbox(pnlOutputs,'Position',[220 0 200 20], ...
+                          'Text','Excel metrics','Value',true);
+    chkPowerPoint      = uicheckbox(pnlOutputs,'Position',[420 0 200 20], ...
+                          'Text','PowerPoint','Value',true);
 
     % Output folder selection
     uilabel(fig,'Position',[20 220 90 22],'Text','Output folder:');
@@ -99,8 +128,8 @@ function Actograph_v7_forparticipants_GUI
         'ButtonPushedFcn',@runAnalysis);
 
     % Status label
-    lblStatus = uilabel(fig,'Position',[20 130 560 22],'Text','Ready','HorizontalAlignment','left');
-
+    lblStatus = uilabel(fig,'Position',[20 130 560 22],'Text','Ready', ...
+                        'HorizontalAlignment','left');
 
     %% Callback: select input file
     function selectInputFile(~,~)
@@ -109,14 +138,12 @@ function Actograph_v7_forparticipants_GUI
         txtInputFile.Value = fullfile(path,file);
     end
 
-
     %% Callback: select output folder
     function selectOutputFolder(~,~)
         folder = uigetdir('','Select output folder');
         if isequal(folder,0), return; end
         txtOutputFolder.Value = folder;
     end
-
 
     %% Callback: toggle all outputs
     function toggleAllOutputs(src,~)
@@ -126,6 +153,7 @@ function Actograph_v7_forparticipants_GUI
         chkLowActivity.Value   = val;
         chkHeatmap.Value       = val;
         chkTempProfiles.Value  = val;
+        chkCombined.Value      = val;
         chkLightTracker.Value  = val;
         chkLightDist.Value     = val;
         chkExcelSummary.Value  = val;
@@ -133,21 +161,22 @@ function Actograph_v7_forparticipants_GUI
         chkPowerPoint.Value    = val;
     end
 
-
     %% Main analysis function
     function runAnalysis(~,~)
         try
             % Ensure at least one output is selected
-            outputs = [chkActivityProf.Value,...
-                       chkDailyActivity.Value,...
-                       chkLowActivity.Value,...
-                       chkHeatmap.Value,...
-                       chkTempProfiles.Value,...
-                       chkLightTracker.Value,...
-                       chkLightDist.Value,...
-                       chkExcelSummary.Value,...
-                       chkExcelMetrics.Value,...
-                       chkPowerPoint.Value];
+            outputs = [ ...
+               chkActivityProf.Value, ...
+               chkDailyActivity.Value, ...
+               chkLowActivity.Value, ...
+               chkHeatmap.Value, ...
+               chkTempProfiles.Value, ...
+               chkCombined.Value, ...
+               chkLightTracker.Value, ...
+               chkLightDist.Value, ...
+               chkExcelSummary.Value, ...
+               chkExcelMetrics.Value, ...
+               chkPowerPoint.Value ];
             if ~any(outputs)
                 uialert(fig,'Please select at least one output.','Output Selection Error');
                 return;
@@ -167,7 +196,7 @@ function Actograph_v7_forparticipants_GUI
             activityCounts = rawTable.("Sum of vector (SVMg)");
             lightLevels    = rawTable.("Light level (LUX)");
             temperature    = rawTable.("Temperature");
-            timestamps     = datetime(rawTable.("Time stamp"),...
+            timestamps     = datetime(rawTable.("Time stamp"), ...
                                      'InputFormat','yyyy-MM-dd HH:mm:ss:SSS');
 
             % Global light threshold
@@ -285,7 +314,8 @@ function Actograph_v7_forparticipants_GUI
                     hold(ax1,'on');
                     yline(ax1, lightThreshold,':','Color',[0.5 0.5 0.5],'LineWidth',0.5);
                     hold(ax1,'off');
-                    title(ax1, sprintf('Light Tracker — %s (Full Range)', datestr(dayStartDates(d),'dd mmm yyyy')), ...
+                    title(ax1, sprintf('Light Tracker — %s (Full Range)', ...
+                          datestr(dayStartDates(d),'dd mmm yyyy')), ...
                           'FontSize',14,'HorizontalAlignment','center');
                     xlim(ax1,[0 1440]);
                     ax1.XTick = [];
@@ -562,8 +592,73 @@ function Actograph_v7_forparticipants_GUI
                     close(figLD);
                 end
 
-            end  % end weekly loop
+                % 7) Combined profile (Activity, Light, Temp) with overlaid axes
+                if chkCombined.Value
+                    figCP = figure('Visible','off','Color','w');
+                    for i = 1:nThisWeek
+                        d = daysIdx(i);
+                
+                        % Draw activity bars and light shading
+                        axMain = subplot(nThisWeek,1,i);
+                        hold(axMain,'on');
+                        axMain.XAxisLocation = 'origin';             % anchor x-axis at y=0
+                        axMain.XLim       = [0 1440];
+                        axMain.XTick      = 0:240:1440;
+                        axMain.XTickLabel = {'00:00','04:00','08:00','12:00','16:00','20:00','24:00'};
+                
+                        mL = binnedLight(d,:) > lightThreshold;
+                        mD = ~mL;
+                        yMax = max(binnedActivity(d,:),[],'omitnan') * 1.2;
+                        fillSegments(axMain,mD,timeAxis,0,yMax,[0.9 0.9 0.9]);
+                        fillSegments(axMain,mL,timeAxis,0,yMax,[0.9290 0.6940 0.1250]);
+                        bar(axMain,timeAxis,binnedActivity(d,:),'FaceColor',[0 0.4470 0.7410],'EdgeColor','none');
+                        ylim(axMain,[0 yMax]);
+                        axMain.YTick = [0 yMax];
+                        set(axMain,'YTickLabel',[],'Box','off','TickDir','out','FontSize',11);
+                
+                        if anyDates
+                            ylabel(axMain,dateLabels{i},'FontSize',12);
+                        else
+                            ylabel(axMain,sprintf('Day %d',d),'FontSize',12);
+                        end
+                
+                        % Overlay transparent temperature axes
+                        pos    = axMain.Position;
+                        axTemp = axes('Position',pos, ...
+                                      'Color','none', ...
+                                      'YAxisLocation','right', ...
+                                      'XAxisLocation','bottom', ...
+                                      'Box','off', ...
+                                      'TickDir','out', ...
+                                      'FontSize',11, ...
+                                      'XLim',axMain.XLim, ...
+                                      'XTick',axMain.XTick);
+                        hold(axTemp,'on');
+                        axTemp.XTick = [];
+                        axTemp.XAxis.Visible = 'off';
+                
+                        plot(axTemp,timeAxis,binnedTemperature(d,:),'LineWidth',1.5,'Color',[1 0 0]);
+                        ylim(axTemp,[0 globalMaxTemp]);
+                        yticks(axTemp,[0 tempTicks]);
+                        ylabel(axTemp,'°C','FontSize',12);
+                
+                        linkaxes([axMain,axTemp],'x');
+                
+                        if i==1
+                            title(axMain,sprintf('Combined Profile — Week %d',wk),'FontSize',16);
+                        end
+                
+                        hold(axMain,'off');
+                        hold(axTemp,'off');
+                    end
+                
+                    xlabel(axMain,'Time of Day','FontSize',12);
+                    exportgraphics(figCP, fullfile(outputFolderPath, ...
+                                  sprintf('07_CombinedProfile_Week%d.jpg',wk)),'Resolution',600);
+                    close(figCP);
+                end
 
+            end  % end weekly loop
 
             %------------------------------------------------------------------
             % Write Excel workbook
@@ -645,7 +740,6 @@ function Actograph_v7_forparticipants_GUI
             lblStatus.Text = 'Error encountered.';
         end
     end
-
 
     %% Helper: fill contiguous segments of a logical mask
     function fillSegments(ax,maskArray,xVals,yBottom,yTop,fillColor)
