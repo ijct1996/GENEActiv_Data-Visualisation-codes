@@ -1,28 +1,12 @@
 function Actograph_v10_forparticipants_GUI
 % -------------------------------------------------------------------------
-% Actograph Analysis and Summary GUI for GENEActiv Participants
-% -------------------------------------------------------------------------
-% Patch Notes (v10.5)
-%   1) Low-activity call-outs now exclude incomplete/partial days when
-%      defining the "low" threshold and when assigning "Low" labels.
-%      - Partial days are coloured grey in the full bar plot.
-%      - A second bar plot is exported showing only complete days.
+% Actograph Analysis and Summary GUI for GENEActiv Participants (v10.5)
+% See README files for usage, input format, outputs, and interpretation notes.
 %
-% Notes (from prior v10.4)
-%   1) PowerPoint uses the same exported, user-facing figures (no PPT variants).
-%      Combined profiles export as PDF (vector) and are not added to PPT.
-%   2) Temperature axes use global min/max with outward rounding to 0.1 °C.
-%      Blanket temperature label is added via overlay axes on the right.
-%   3) Vector export warning suppressed locally during PDF export.
-%   4) Heatmap ensures "48" tick label and removes top/right tick marks while
-%      retaining a boxed border via a rectangle.
-%   5) Code Analyzer clean-up: no Renderer calls, no caxis (uses CLim).
+% Last update: 04 February 2026 (IJT)
+% Change summary: Double-plotted actograms and output feature optimisation.
 %
-% Requirements
-%   - MATLAB with uifigure support (R2019a+)
-%   - Report Generator toolbox only if PowerPoint export is selected
-%
-% © 2025-2026 [Isaiah J Ting, Lall Lab]
+% © 2025–2026 Isaiah J. Ting, Lall Lab
 % -------------------------------------------------------------------------
 
     clc; close all;
@@ -950,11 +934,11 @@ function Actograph_v10_forparticipants_GUI
                 else
                     origDir = pwd;
                     cd(outputFolderPath);
-                    cObj = onCleanup(@() cd(origDir)); %#ok<NASGU>
+                    cObj = onCleanup(@() cd(origDir)); 
 
                     pptFileName = 'AllFigures_Report.pptx';
                     if isfile(pptFileName)
-                        try, delete(pptFileName); catch, end
+                        try delete(pptFileName); catch, end
                     end
 
                     ppt = mlreportgen.ppt.Presentation(pptFileName);
@@ -990,7 +974,7 @@ function Actograph_v10_forparticipants_GUI
 
                     tmpDir = fullfile(outputFolderPath,'ppt_tmp');
                     if isfolder(tmpDir)
-                        try, rmdir(tmpDir,'s'); catch, end
+                        try rmdir(tmpDir,'s'); catch, end
                     end
 
                     appendLog(sprintf('PPT created with %d slide(s) from exported figures.', nAdded));
@@ -1332,7 +1316,7 @@ function Actograph_v10_forparticipants_GUI
             outPath = char(string(basePathNoExt) + ".pdf");
 
             wState = warning;
-            cWarn = onCleanup(@() warning(wState)); %#ok<NASGU>
+            cWarn = onCleanup(@() warning(wState)); 
             warning('off','all');
             try
                 exportgraphics(hFig, outPath, 'ContentType','vector');
